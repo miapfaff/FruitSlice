@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
 import cv2
-import mediapipe as mp
 import numpy as np
+from mediapipe.tasks.python.core import base_options as base_options_lib
+from mediapipe.tasks.python.vision import hand_landmarker as hand_landmarker_lib
+from mediapipe.tasks.python.vision.core import image as mp_image_lib
+from mediapipe.tasks.python.vision.core import vision_task_running_mode as vision_running_mode_lib
+
+from src import config
 
 
 @dataclass
@@ -18,11 +25,7 @@ class HandSlicePoint:
 
 
 class HandTracker:
-    """small wrapper around mediapipe hands for this game.
-
-    this class hides mediapipe details and returns only what the game loop needs:
-    the index finger tip point in pixel coordinates.
-    """
+    """Small wrapper around MediaPipe hand tracker for this game."""
 
     def __init__(
         self,
@@ -30,45 +33,61 @@ class HandTracker:
         min_detection_confidence: float = 0.6,
         min_tracking_confidence: float = 0.6,
     ) -> None:
-        # mp.solutions is the classic hands api.
-        self._mp_hands = mp.solutions.hands
-        # create the reusable detector/tracker object once.
-        self._hands = self._mp_hands.Hands(
-            max_num_hands=max_num_hands,
-            min_detection_confidence=min_detection_confidence,
+        _ensure_hand_landmarker_model()
+        options = hand_landmarker_lib.HandLandmarkerOptions(
+            base_options=base_options_lib.BaseOptions(
+                model_asset_path=str(config.HAND_LANDMARKER_MODEL_PATH),
+                delegate=base_options_lib.BaseOptions.Delegate.CPU,
+            ),
+            running_mode=vision_running_mode_lib.VisionTaskRunningMode.IMAGE,
+            num_hands=max_num_hands,
+            min_hand_detection_confidence=min_detection_confidence,
+            min_hand_presence_confidence=min_detection_confidence,
             min_tracking_confidence=min_tracking_confidence,
         )
+        self._landmarker = hand_landmarker_lib.HandLandmarker.create_from_options(options)
+        self._tip_index = hand_landmarker_lib.HandLandmark.INDEX_FINGER_TIP
 
     def get_index_tip(
         self, frame_bgr: np.ndarray
     ) -> Tuple[Optional[HandSlicePoint], Optional[object]]:
-        """return the first hand's index-finger tip in pixel coordinates.
-
-        returns:
-        - HandSlicePoint + raw mediapipe results when a hand is found
-        - None + raw results when no hand landmarks are present
-        """
-        # mediapipe expects rgb input, while opencv camera frames are bgr.
+        """Return the first hand index-finger tip in pixel coordinates."""
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        results = self._hands.process(frame_rgb)
+        if not frame_rgb.flags["C_CONTIGUOUS"]:
+            frame_rgb = np.ascontiguousarray(frame_rgb)
+        mp_image = mp_image_lib.Image(mp_image_lib.ImageFormat.SRGB, frame_rgb)
+        results = self._landmarker.detect(mp_image)
 
-        if not results.multi_hand_landmarks:
+        if not results.hand_landmarks:
             return None, results
 
-        # use only the first detected hand.
-        hand_landmarks = results.multi_hand_landmarks[0]
-        # select the index fingertip landmark from mediapipe's enum (enum is a list of constants)
-        landmark = hand_landmarks.landmark[self._mp_hands.HandLandmark.INDEX_FINGER_TIP]
-        # convert normalized coordinates (0..1) to pixel coordinates (x, y)
+        landmark = results.hand_landmarks[0][self._tip_index]
+        if landmark.x is None or landmark.y is None:
+            return None, results
+
         h, w, _ = frame_bgr.shape
         point = HandSlicePoint(
             x=int(landmark.x * w),
             y=int(landmark.y * h),
-            # visibility may be missing on some models, so default to 1.0.
-            confidence=landmark.visibility if landmark.visibility else 1.0,
+            confidence=landmark.visibility if landmark.visibility is not None else 1.0,
         )
         return point, results
 
     def close(self) -> None:
-        # release mediapipe hands object resources
-        self._hands.close()
+        self._landmarker.close()
+
+
+def _ensure_hand_landmarker_model() -> None:
+    path = config.HAND_LANDMARKER_MODEL_PATH
+    if path.is_file():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with urllib.request.urlopen(config.HAND_LANDMARKER_MODEL_URL, timeout=120) as resp:
+            path.write_bytes(resp.read())
+    except urllib.error.URLError as exc:
+        raise RuntimeError(
+            "Could not download the MediaPipe hand landmarker model. "
+            f"Download it manually from {config.HAND_LANDMARKER_MODEL_URL} "
+            f"and save it as {path}"
+        ) from exc

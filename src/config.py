@@ -4,8 +4,22 @@ all values are kept in one place so we can tweak difficulty/feel
 without digging through multiple files.
 """
 
+from pathlib import Path
+
+# repo root (parent of `src/`).
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# mediapipe tasks hand model; downloaded on first run if missing.
+HAND_LANDMARKER_MODEL_PATH = PROJECT_ROOT / "data" / "hand_landmarker.task"
+HAND_LANDMARKER_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
+    "hand_landmarker/float16/1/hand_landmarker.task"
+)
+
 # window title shown by opencv.
 WINDOW_NAME = "FruitSlice MVP"
+
+# default camera device index.
+CAMERA_DEVICE_INDEX = 0
 
 # camera/frame render size.
 FRAME_WIDTH = 1280
