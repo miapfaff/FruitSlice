@@ -26,16 +26,20 @@ FRAME_WIDTH = 1280
 FRAME_HEIGHT = 720
 
 # max active fruits allowed on screen.
-MAX_FRUITS = 5
+MAX_FRUITS = 3
 # minimum time between spawns so the game does not flood.
-FRUIT_SPAWN_COOLDOWN_SECONDS = 0.7
+FRUIT_SPAWN_COOLDOWN_SECONDS = 1.4
 # start radius (small = farther away look).
 FRUIT_BASE_RADIUS = 24
 # final radius (big = closer to player look).
 FRUIT_MAX_RADIUS = 70
-# movement speed range in pixels/sec.
-FRUIT_MIN_SPEED = 240
-FRUIT_MAX_SPEED = 380
+# upward launch speed range in pixels/sec.
+FRUIT_MIN_LAUNCH_SPEED = 1100
+FRUIT_MAX_LAUNCH_SPEED = 1300
+# lateral speed range while fruit is airborne.
+FRUIT_HORIZONTAL_SPEED = 180
+# downward acceleration in pixels/sec^2.
+FRUIT_GRAVITY = 1100
 
 # short cooldown avoids counting one swipe multiple times per frame burst.
 SLICE_COOLDOWN_SECONDS = 0.08
