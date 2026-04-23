@@ -4,7 +4,7 @@ import random
 import time
 
 from src import config
-from src.game.fruit import Fruit
+from src.game.fruit import Fruit, JuiceParticle, SlicedFruitHalf, make_slice_effects
 
 
 class GameState:
@@ -22,6 +22,8 @@ class GameState:
         self.frame_height = frame_height
         # active fruits currently alive in the scene.
         self.fruits: list[Fruit] = []
+        self.sliced_halves: list[SlicedFruitHalf] = []
+        self.juice_particles: list[JuiceParticle] = []
         # game counters shown in hud.
         self.score = 0
         self.misses = 0
@@ -36,39 +38,20 @@ class GameState:
         if now - self.last_spawn_time < config.FRUIT_SPAWN_COOLDOWN_SECONDS:
             return
 
-        # choose spawn side to vary incoming trajectories.
-        side = random.choice(["left", "right", "bottom"])
-        if side == "left":
-            x, y = -30.0, random.uniform(120, self.frame_height - 120)
-            vx = random.uniform(config.FRUIT_MIN_SPEED, config.FRUIT_MAX_SPEED)
-            vy = random.uniform(-80, 80)
-        elif side == "right":
-            x, y = self.frame_width + 30.0, random.uniform(120, self.frame_height - 120)
-            vx = -random.uniform(config.FRUIT_MIN_SPEED, config.FRUIT_MAX_SPEED)
-            vy = random.uniform(-80, 80)
-        else:
-            x, y = random.uniform(120, self.frame_width - 120), self.frame_height + 30.0
-            vx = random.uniform(-120, 120)
-            vy = -random.uniform(config.FRUIT_MIN_SPEED, config.FRUIT_MAX_SPEED)
-
-        # placeholder colors until sprite assets are added.
-        color = random.choice(
-            [
-                (72, 120, 240),
-                (78, 200, 98),
-                (60, 220, 220),
-                (170, 80, 210),
-                (65, 180, 255),
-            ]
-        )
+        # all fruits launch upward from the bottom, then fall due to gravity.
+        x = random.uniform(120, self.frame_width - 120)
+        y = self.frame_height + 30.0
+        vx = random.uniform(-config.FRUIT_HORIZONTAL_SPEED, config.FRUIT_HORIZONTAL_SPEED)
+        vy = -random.uniform(config.FRUIT_MIN_LAUNCH_SPEED, config.FRUIT_MAX_LAUNCH_SPEED)
+        kind = random.choice(["orange", "watermelon", "apple"])
         fruit = Fruit(
             x=x,
             y=y,
             vx=vx,
             vy=vy,
+            kind=kind,
             radius=config.FRUIT_BASE_RADIUS,
             target_radius=config.FRUIT_MAX_RADIUS,
-            color_bgr=color,
         )
         self.fruits.append(fruit)
         self.last_spawn_time = now
@@ -78,18 +61,27 @@ class GameState:
         # update all fruit motion/radius.
         for fruit in self.fruits:
             fruit.update(dt)
+        for half in self.sliced_halves:
+            half.update(dt)
+        for particle in self.juice_particles:
+            particle.update(dt)
 
         alive: list[Fruit] = []
         for fruit in self.fruits:
             # sliced fruits are removed immediately in this mvp.
             if fruit.sliced:
                 continue
-            # fruit leaving play area increments miss counter.
-            if fruit.out_of_bounds(self.frame_width, self.frame_height):
+            # missing means fruit hits ground before the player slices it.
+            if fruit.touched_ground(self.frame_height):
                 self.misses += 1
+                continue
+            # clean up impossible trajectories that leave play area.
+            if fruit.out_of_bounds(self.frame_width, self.frame_height):
                 continue
             alive.append(fruit)
         self.fruits = alive
+        self.sliced_halves = [half for half in self.sliced_halves if not half.expired()]
+        self.juice_particles = [p for p in self.juice_particles if not p.expired()]
 
     def try_slice(self, p1: tuple[int, int], p2: tuple[int, int], now: float) -> int:
         """test swipe segment against all fruits and return count sliced."""
@@ -102,6 +94,9 @@ class GameState:
             if not fruit.sliced and fruit.intersects_segment(p1, p2):
                 fruit.sliced = True
                 sliced_count += 1
+                halves, particles = make_slice_effects(fruit)
+                self.sliced_halves.extend(halves)
+                self.juice_particles.extend(particles)
 
         if sliced_count > 0:
             # one point per fruit for now; easy to extend to combos later.

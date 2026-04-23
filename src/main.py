@@ -80,6 +80,10 @@ def main() -> None:
             # draw all fruits.
             for fruit in game.fruits:
                 fruit.draw(frame)
+            for half in game.sliced_halves:
+                half.draw(frame)
+            for particle in game.juice_particles:
+                particle.draw(frame)
 
             # draw the hand trail as a polyline.
             if len(trail) >= 2:

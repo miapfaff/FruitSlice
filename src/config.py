@@ -4,24 +4,42 @@ all values are kept in one place so we can tweak difficulty/feel
 without digging through multiple files.
 """
 
+from pathlib import Path
+
+# repo root (parent of `src/`).
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# mediapipe tasks hand model; downloaded on first run if missing.
+HAND_LANDMARKER_MODEL_PATH = PROJECT_ROOT / "data" / "hand_landmarker.task"
+HAND_LANDMARKER_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
+    "hand_landmarker/float16/1/hand_landmarker.task"
+)
+
 # window title shown by opencv.
 WINDOW_NAME = "FruitSlice MVP"
+
+# default camera device index.
+CAMERA_DEVICE_INDEX = 0
 
 # camera/frame render size.
 FRAME_WIDTH = 1280
 FRAME_HEIGHT = 720
 
 # max active fruits allowed on screen.
-MAX_FRUITS = 5
+MAX_FRUITS = 3
 # minimum time between spawns so the game does not flood.
-FRUIT_SPAWN_COOLDOWN_SECONDS = 0.7
+FRUIT_SPAWN_COOLDOWN_SECONDS = 1.4
 # start radius (small = farther away look).
 FRUIT_BASE_RADIUS = 24
 # final radius (big = closer to player look).
 FRUIT_MAX_RADIUS = 70
-# movement speed range in pixels/sec.
-FRUIT_MIN_SPEED = 240
-FRUIT_MAX_SPEED = 380
+# upward launch speed range in pixels/sec.
+FRUIT_MIN_LAUNCH_SPEED = 1100
+FRUIT_MAX_LAUNCH_SPEED = 1300
+# lateral speed range while fruit is airborne.
+FRUIT_HORIZONTAL_SPEED = 180
+# downward acceleration in pixels/sec^2.
+FRUIT_GRAVITY = 1100
 
 # short cooldown avoids counting one swipe multiple times per frame burst.
 SLICE_COOLDOWN_SECONDS = 0.08
