@@ -27,6 +27,10 @@ FRAME_HEIGHT = 720
 
 # max active fruits allowed on screen.
 MAX_FRUITS = 3
+# chance that a spawn is a bomb instead of fruit.
+BOMB_SPAWN_CHANCE = 0.16
+# player health; bomb hits consume one life.
+STARTING_LIVES = 3
 # minimum time between spawns so the game does not flood.
 FRUIT_SPAWN_COOLDOWN_SECONDS = 1.4
 # start radius (small = farther away look).
