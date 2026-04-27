@@ -19,7 +19,7 @@ class UiState:
     clicked: bool = False
 
 
-def draw_hud(frame, score: int, misses: int, lives: int) -> None:
+def draw_hud(frame, score: int, misses: int, lives: int, level: int) -> None:
     """draw simple overlay text for core game stats and controls."""
     cv2.putText(frame, f"Score: {score}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (240, 240, 240), 2)
     cv2.putText(frame, f"Misses: {misses}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (240, 240, 240), 2)
@@ -30,6 +30,15 @@ def draw_hud(frame, score: int, misses: int, lives: int) -> None:
         cv2.FONT_HERSHEY_SIMPLEX,
         1.0,
         (120, 220, 255),
+        2,
+    )
+    cv2.putText(
+        frame,
+        f"Level: {level}",
+        (20, 160),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.0,
+        (130, 235, 130),
         2,
     )
     cv2.putText(
@@ -128,6 +137,7 @@ def main() -> None:
 
             if ui.mode == "playing":
                 # update game objects.
+                game.refresh_progression(now)
                 game.maybe_spawn_fruit(now)
                 game.update(dt)
 
@@ -193,8 +203,22 @@ def main() -> None:
                     ui.mode = "playing"
                 ui.clicked = False
 
+            if (
+                ui.mode == "playing"
+                and now - game.last_level_up_at <= config.LEVEL_UP_BANNER_SECONDS
+            ):
+                cv2.putText(
+                    frame,
+                    f"Level Up! {game.level}",
+                    (frame.shape[1] // 2 - 145, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.1,
+                    (120, 240, 255),
+                    3,
+                )
+
             # draw hud text and present frame.
-            draw_hud(frame, game.score, game.misses, game.lives)
+            draw_hud(frame, game.score, game.misses, game.lives, game.level)
             cv2.imshow(config.WINDOW_NAME, frame)
 
             # keyboard handling (q to quit).
