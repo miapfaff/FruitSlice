@@ -27,12 +27,16 @@ class GameState:
         # game counters shown in hud.
         self.score = 0
         self.misses = 0
+        self.lives = config.STARTING_LIVES
+        self.game_over = False
         # timestamps for spawn/slice cooldown controls.
         self.last_spawn_time = 0.0
         self.last_slice_time = 0.0
 
     def maybe_spawn_fruit(self, now: float) -> None:
         """spawn a fruit when below limits and cooldown has elapsed."""
+        if self.game_over:
+            return
         if len(self.fruits) >= config.MAX_FRUITS:
             return
         if now - self.last_spawn_time < config.FRUIT_SPAWN_COOLDOWN_SECONDS:
@@ -43,7 +47,10 @@ class GameState:
         y = self.frame_height + 30.0
         vx = random.uniform(-config.FRUIT_HORIZONTAL_SPEED, config.FRUIT_HORIZONTAL_SPEED)
         vy = -random.uniform(config.FRUIT_MIN_LAUNCH_SPEED, config.FRUIT_MAX_LAUNCH_SPEED)
-        kind = random.choice(["orange", "watermelon", "apple"])
+        if random.random() < config.BOMB_SPAWN_CHANCE:
+            kind = "bomb"
+        else:
+            kind = random.choice(["orange", "watermelon", "apple"])
         fruit = Fruit(
             x=x,
             y=y,
@@ -58,6 +65,15 @@ class GameState:
 
     def update(self, dt: float) -> None:
         """step simulation and remove sliced/missed fruits."""
+        if self.game_over:
+            for half in self.sliced_halves:
+                half.update(dt)
+            for particle in self.juice_particles:
+                particle.update(dt)
+            self.sliced_halves = [half for half in self.sliced_halves if not half.expired()]
+            self.juice_particles = [p for p in self.juice_particles if not p.expired()]
+            return
+
         # update all fruit motion/radius.
         for fruit in self.fruits:
             fruit.update(dt)
@@ -85,6 +101,8 @@ class GameState:
 
     def try_slice(self, p1: tuple[int, int], p2: tuple[int, int], now: float) -> int:
         """test swipe segment against all fruits and return count sliced."""
+        if self.game_over:
+            return 0
         # cooldown prevents overcounting one fast swipe over many consecutive frames.
         if now - self.last_slice_time < config.SLICE_COOLDOWN_SECONDS:
             return 0
@@ -93,10 +111,16 @@ class GameState:
         for fruit in self.fruits:
             if not fruit.sliced and fruit.intersects_segment(p1, p2):
                 fruit.sliced = True
-                sliced_count += 1
                 halves, particles = make_slice_effects(fruit)
                 self.sliced_halves.extend(halves)
                 self.juice_particles.extend(particles)
+                if fruit.kind == "bomb":
+                    self.lives -= 1
+                    if self.lives <= 0:
+                        self.lives = 0
+                        self.game_over = True
+                else:
+                    sliced_count += 1
 
         if sliced_count > 0:
             # one point per fruit for now; easy to extend to combos later.
@@ -104,6 +128,17 @@ class GameState:
             self.last_slice_time = now
 
         return sliced_count
+
+    def reset(self) -> None:
+        self.fruits.clear()
+        self.sliced_halves.clear()
+        self.juice_particles.clear()
+        self.score = 0
+        self.misses = 0
+        self.lives = config.STARTING_LIVES
+        self.game_over = False
+        self.last_spawn_time = 0.0
+        self.last_slice_time = 0.0
 
     @staticmethod
     def now() -> float:

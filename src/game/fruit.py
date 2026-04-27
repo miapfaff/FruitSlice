@@ -11,7 +11,7 @@ import numpy as np
 from src import config
 
 
-FruitKind = Literal["orange", "watermelon", "apple"]
+FruitKind = Literal["orange", "watermelon", "apple", "bomb"]
 
 
 @dataclass
@@ -135,6 +135,9 @@ class JuiceParticle:
 
 
 def make_slice_effects(fruit: Fruit) -> tuple[list[SlicedFruitHalf], list[JuiceParticle]]:
+    if fruit.kind == "bomb":
+        return [], make_bomb_explosion(fruit.x, fruit.y, fruit.vx, fruit.vy)
+
     halves = [
         SlicedFruitHalf(
             x=fruit.x - fruit.radius * 0.15,
@@ -174,11 +177,38 @@ def make_slice_effects(fruit: Fruit) -> tuple[list[SlicedFruitHalf], list[JuiceP
     return halves, particles
 
 
+def make_bomb_explosion(x: float, y: float, vx: float, vy: float) -> list[JuiceParticle]:
+    particles: list[JuiceParticle] = []
+    for _ in range(36):
+        angle = random.uniform(0.0, math.tau)
+        speed = random.uniform(180.0, 460.0)
+        # fiery orange/yellow sparks mixed with dark smoke.
+        if random.random() < 0.7:
+            color = random.choice([(20, 120, 255), (40, 180, 255), (70, 220, 255)])
+        else:
+            shade = random.randint(30, 80)
+            color = (shade, shade, shade)
+        particles.append(
+            JuiceParticle(
+                x=x,
+                y=y,
+                vx=math.cos(angle) * speed + vx * 0.25,
+                vy=math.sin(angle) * speed + vy * 0.15,
+                radius=random.uniform(2.0, 5.5),
+                color_bgr=color,
+                life_s=random.uniform(0.22, 0.6),
+            )
+        )
+    return particles
+
+
 def _fruit_palette(kind: FruitKind) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     if kind == "orange":
         return (40, 155, 245), (120, 190, 255)
     if kind == "watermelon":
         return (55, 180, 70), (90, 85, 220)
+    if kind == "bomb":
+        return (45, 45, 45), (80, 80, 80)
     return (45, 45, 215), (120, 170, 250)
 
 
@@ -203,6 +233,27 @@ def _draw_fruit(frame: np.ndarray, kind: FruitKind, x: float, y: float, radius: 
             dx = int(math.cos(rad) * r * 0.72)
             dy = int(math.sin(rad) * r * 0.72)
             cv2.line(frame, (center[0] - dx, center[1] - dy), (center[0] + dx, center[1] + dy), (120, 200, 255), 1)
+    elif kind == "bomb":
+        cv2.circle(frame, center, int(r * 0.95), (35, 35, 35), -1)
+        cv2.circle(frame, center, int(r * 0.95), (120, 120, 120), 2)
+        # fuse + spark
+        cv2.line(
+            frame,
+            (center[0], center[1] - r),
+            (center[0] + int(r * 0.4), center[1] - int(r * 1.5)),
+            (90, 130, 160),
+            2,
+        )
+        cv2.circle(frame, (center[0] + int(r * 0.45), center[1] - int(r * 1.55)), 3, (30, 200, 255), -1)
+        cv2.putText(
+            frame,
+            "!",
+            (center[0] - int(r * 0.2), center[1] + int(r * 0.25)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            max(0.4, r / 35.0),
+            (230, 230, 230),
+            2,
+        )
     else:
         # apple: stem + highlight
         cv2.rectangle(
