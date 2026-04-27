@@ -6,11 +6,10 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 import cv2
+import mediapipe as mp
 import numpy as np
-from mediapipe.tasks.python.core import base_options as base_options_lib
-from mediapipe.tasks.python.vision import hand_landmarker as hand_landmarker_lib
-from mediapipe.tasks.python.vision.core import image as mp_image_lib
-from mediapipe.tasks.python.vision.core import vision_task_running_mode as vision_running_mode_lib
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
 
 from src import config
 
@@ -34,19 +33,19 @@ class HandTracker:
         min_tracking_confidence: float = 0.6,
     ) -> None:
         _ensure_hand_landmarker_model()
-        options = hand_landmarker_lib.HandLandmarkerOptions(
-            base_options=base_options_lib.BaseOptions(
+        options = mp_vision.HandLandmarkerOptions(
+            base_options=mp_python.BaseOptions(
                 model_asset_path=str(config.HAND_LANDMARKER_MODEL_PATH),
-                delegate=base_options_lib.BaseOptions.Delegate.CPU,
+                delegate=mp_python.BaseOptions.Delegate.CPU,
             ),
-            running_mode=vision_running_mode_lib.VisionTaskRunningMode.IMAGE,
+            running_mode=mp_vision.RunningMode.IMAGE,
             num_hands=max_num_hands,
             min_hand_detection_confidence=min_detection_confidence,
             min_hand_presence_confidence=min_detection_confidence,
             min_tracking_confidence=min_tracking_confidence,
         )
-        self._landmarker = hand_landmarker_lib.HandLandmarker.create_from_options(options)
-        self._tip_index = hand_landmarker_lib.HandLandmark.INDEX_FINGER_TIP
+        self._landmarker = mp_vision.HandLandmarker.create_from_options(options)
+        self._tip_index = mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP
 
     def get_index_tip(
         self, frame_bgr: np.ndarray
@@ -55,7 +54,7 @@ class HandTracker:
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         if not frame_rgb.flags["C_CONTIGUOUS"]:
             frame_rgb = np.ascontiguousarray(frame_rgb)
-        mp_image = mp_image_lib.Image(mp_image_lib.ImageFormat.SRGB, frame_rgb)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
         results = self._landmarker.detect(mp_image)
 
         if not results.hand_landmarks:
