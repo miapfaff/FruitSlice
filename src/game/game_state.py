@@ -32,21 +32,44 @@ class GameState:
         # timestamps for spawn/slice cooldown controls.
         self.last_spawn_time = 0.0
         self.last_slice_time = 0.0
+        self.run_started_at = 0.0
+        self.elapsed_time = 0.0
+        self.level = 1
+        self.last_level_up_at = -999.0
+
+    def refresh_progression(self, now: float) -> None:
+        """update elapsed time + level from current run clock."""
+        if self.game_over:
+            return
+        self.elapsed_time = max(0.0, now - self.run_started_at)
+        next_level = 1 + int(self.elapsed_time // config.LEVEL_UP_EVERY_SECONDS)
+        if next_level > self.level:
+            self.level = next_level
+            self.last_level_up_at = now
+        else:
+            self.level = next_level
 
     def maybe_spawn_fruit(self, now: float) -> None:
         """spawn a fruit when below limits and cooldown has elapsed."""
         if self.game_over:
             return
-        if len(self.fruits) >= config.MAX_FRUITS:
+        max_fruits = min(config.MAX_FRUITS_CAP, config.MAX_FRUITS + max(0, self.level - 1))
+        if len(self.fruits) >= max_fruits:
             return
-        if now - self.last_spawn_time < config.FRUIT_SPAWN_COOLDOWN_SECONDS:
+        cooldown = max(
+            config.FRUIT_SPAWN_COOLDOWN_MIN_SECONDS,
+            config.FRUIT_SPAWN_COOLDOWN_SECONDS
+            - config.LEVEL_SPAWN_COOLDOWN_STEP * max(0, self.level - 1),
+        )
+        if now - self.last_spawn_time < cooldown:
             return
 
         # all fruits launch upward from the bottom, then fall due to gravity.
+        speed_mult = 1.0 + config.LEVEL_SPEED_MULTIPLIER_STEP * max(0, self.level - 1)
         x = random.uniform(120, self.frame_width - 120)
         y = self.frame_height + 30.0
-        vx = random.uniform(-config.FRUIT_HORIZONTAL_SPEED, config.FRUIT_HORIZONTAL_SPEED)
-        vy = -random.uniform(config.FRUIT_MIN_LAUNCH_SPEED, config.FRUIT_MAX_LAUNCH_SPEED)
+        vx = random.uniform(-config.FRUIT_HORIZONTAL_SPEED, config.FRUIT_HORIZONTAL_SPEED) * speed_mult
+        vy = -random.uniform(config.FRUIT_MIN_LAUNCH_SPEED, config.FRUIT_MAX_LAUNCH_SPEED) * speed_mult
         if random.random() < config.BOMB_SPAWN_CHANCE:
             kind = "bomb"
         else:
@@ -139,6 +162,10 @@ class GameState:
         self.game_over = False
         self.last_spawn_time = 0.0
         self.last_slice_time = 0.0
+        self.run_started_at = self.now()
+        self.elapsed_time = 0.0
+        self.level = 1
+        self.last_level_up_at = -999.0
 
     @staticmethod
     def now() -> float:

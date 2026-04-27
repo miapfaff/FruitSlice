@@ -68,12 +68,14 @@ class Fruit:
 
     def touched_ground(self, height: int) -> bool:
         """return true when bottom of fruit touches screen bottom (ground)."""
-        return (self.y + self.radius) >= height
+        return self.vy > 0 and (self.y + self.radius) >= height
 
     def out_of_bounds(self, width: int, height: int) -> bool:
         """remove fruit when it exits side/top padding to keep list bounded."""
         pad = 120
-        return self.x < -pad or self.x > width + pad or self.y < -pad
+        # Keep fruit alive if it only goes above the top edge; gravity will
+        # bring it back down and the player can still slice it.
+        return self.x < -pad or self.x > width + pad
 
 
 @dataclass

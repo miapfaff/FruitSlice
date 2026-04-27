@@ -27,12 +27,16 @@ FRAME_HEIGHT = 720
 
 # max active fruits allowed on screen.
 MAX_FRUITS = 3
+# hard cap for level-scaled active fruits.
+MAX_FRUITS_CAP = 8
 # chance that a spawn is a bomb instead of fruit.
 BOMB_SPAWN_CHANCE = 0.16
 # player health; bomb hits consume one life.
 STARTING_LIVES = 3
 # minimum time between spawns so the game does not flood.
 FRUIT_SPAWN_COOLDOWN_SECONDS = 1.4
+# lower bound for spawn cooldown as levels increase.
+FRUIT_SPAWN_COOLDOWN_MIN_SECONDS = 0.45
 # start radius (small = farther away look).
 FRUIT_BASE_RADIUS = 24
 # final radius (big = closer to player look).
@@ -44,6 +48,13 @@ FRUIT_MAX_LAUNCH_SPEED = 1300
 FRUIT_HORIZONTAL_SPEED = 180
 # downward acceleration in pixels/sec^2.
 FRUIT_GRAVITY = 1100
+# time-based level progression.
+LEVEL_UP_EVERY_SECONDS = 20.0
+# scaling applied per level after level 1.
+LEVEL_SPAWN_COOLDOWN_STEP = 0.08
+LEVEL_SPEED_MULTIPLIER_STEP = 0.12
+# short HUD banner duration when leveling up.
+LEVEL_UP_BANNER_SECONDS = 1.0
 
 # short cooldown avoids counting one swipe multiple times per frame burst.
 SLICE_COOLDOWN_SECONDS = 0.08
