@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import sys
 from collections import deque
 from dataclasses import dataclass
 
 import cv2
 import numpy as np
+import pygame
 
 from src import config
 from src.game.game_state import GameState
@@ -109,6 +111,17 @@ def main() -> None:
 
     # baseline timestamp used for dt calculation.
     last_time = game.now()
+    sound_dir = config.PROJECT_ROOT / "assets" / "sounds"
+    pygame.mixer.init()
+    slice_sound = pygame.mixer.Sound(str(sound_dir / "slice.wav"))
+    explosion_sound = pygame.mixer.Sound(str(sound_dir / "explosion.wav"))
+    bg_music = sound_dir / "background.mp3"
+    try:
+        pygame.mixer.music.load(str(bg_music))
+        pygame.mixer.music.set_volume(0.55)
+        pygame.mixer.music.play(loops=-1)
+    except pygame.error as exc:
+        print(f"Background music could not start ({bg_music}): {exc}", file=sys.stderr)
 
     try:
         cv2.namedWindow(config.WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
@@ -145,7 +158,17 @@ def main() -> None:
                 if len(trail) >= 2:
                     p1 = trail[-2]
                     p2 = trail[-1]
-                    game.try_slice(p1, p2, now)
+                    bomb_will_be_hit = any(
+                        (not fruit.sliced)
+                        and fruit.kind == "bomb"
+                        and fruit.intersects_segment(p1, p2)
+                        for fruit in game.fruits
+                    )
+                    sliced_count = game.try_slice(p1, p2, now)
+                    if bomb_will_be_hit:
+                        explosion_sound.play()
+                    elif sliced_count > 0:
+                        slice_sound.play()
                 if game.game_over:
                     ui.mode = "game_over"
             else:
@@ -230,6 +253,8 @@ def main() -> None:
         tracker.close()
         cap.release()
         cv2.destroyAllWindows()
+        pygame.mixer.music.stop()
+        pygame.mixer.quit()
 
 
 if __name__ == "__main__":
