@@ -1,3 +1,5 @@
+"""mutable run state: spawn scheduling, physics stepping, slice resolution, scoring."""
+
 from __future__ import annotations
 
 import random
@@ -8,12 +10,10 @@ from src.game.fruit import Fruit, JuiceParticle, SlicedFruitHalf, make_slice_eff
 
 
 class GameState:
-    """owns mutable game data and update rules.
+    """owns fruits, effects, counters, and time-based difficulty.
 
-    this keeps `main.py` focused on input/render loop while this class handles:
-    - fruit spawning
-    - per-frame simulation updates
-    - slice scoring logic
+    `main.py` stays thin: it passes dt, calls `maybe_spawn_fruit` / `try_slice`,
+    and draws. all rules for misses, bombs, level scaling, and cleanup live here.
     """
 
     def __init__(self, frame_width: int, frame_height: int) -> None:
@@ -38,7 +38,7 @@ class GameState:
         self.last_level_up_at = -999.0
 
     def refresh_progression(self, now: float) -> None:
-        """update elapsed time + level from current run clock."""
+        """recompute `elapsed_time` and level from `run_started_at`; stamp level-up time."""
         if self.game_over:
             return
         self.elapsed_time = max(0.0, now - self.run_started_at)
@@ -47,10 +47,11 @@ class GameState:
             self.level = next_level
             self.last_level_up_at = now
         else:
+            # keep assignment symmetric so callers always see derived level.
             self.level = next_level
 
     def maybe_spawn_fruit(self, now: float) -> None:
-        """spawn a fruit when below limits and cooldown has elapsed."""
+        """spawn one fruit or bomb from below if under cap and cooldown allows."""
         if self.game_over:
             return
         max_fruits = min(config.MAX_FRUITS_CAP, config.MAX_FRUITS + max(0, self.level - 1))
@@ -87,7 +88,7 @@ class GameState:
         self.last_spawn_time = now
 
     def update(self, dt: float) -> None:
-        """step simulation and remove sliced/missed fruits."""
+        """integrate motion; drop grounded misses; prune oob; expire visual effects."""
         if self.game_over:
             for half in self.sliced_halves:
                 half.update(dt)
@@ -107,10 +108,10 @@ class GameState:
 
         alive: list[Fruit] = []
         for fruit in self.fruits:
-            # sliced fruits are removed immediately in this mvp.
+            # sliced entities become effects only; drop from active list.
             if fruit.sliced:
                 continue
-            # missing means fruit hits ground before the player slices it.
+            # fruit falling past the bottom edge counts as a miss (no score).
             if fruit.touched_ground(self.frame_height):
                 self.misses += 1
                 continue
@@ -123,10 +124,14 @@ class GameState:
         self.juice_particles = [p for p in self.juice_particles if not p.expired()]
 
     def try_slice(self, p1: tuple[int, int], p2: tuple[int, int], now: float) -> int:
-        """test swipe segment against all fruits and return count sliced."""
+        """for each intersecting unsliced fruit: mark sliced, spawn effects; score non-bombs.
+
+        returns number of *fruit* slices this call (bombs do not increment score).
+        bomb hits reduce lives and may set `game_over`. cooldown limits score rate.
+        """
         if self.game_over:
             return 0
-        # cooldown prevents overcounting one fast swipe over many consecutive frames.
+        # ignore rapid repeated segment tests in the same swipe window.
         if now - self.last_slice_time < config.SLICE_COOLDOWN_SECONDS:
             return 0
 
@@ -146,13 +151,14 @@ class GameState:
                     sliced_count += 1
 
         if sliced_count > 0:
-            # one point per fruit for now; easy to extend to combos later.
+            # one point per fruit; extend here for combos or multipliers.
             self.score += sliced_count
             self.last_slice_time = now
 
         return sliced_count
 
     def reset(self) -> None:
+        """clear entities and counters; start a new run clock at `now()`."""
         self.fruits.clear()
         self.sliced_halves.clear()
         self.juice_particles.clear()

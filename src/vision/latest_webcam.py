@@ -1,9 +1,9 @@
-"""Threaded webcam reader that always exposes the freshest frame.
+"""threaded webcam reader that always exposes the freshest frame.
 
-OpenCV may queue frames internally; slow per-frame work (e.g. MediaPipe) lets the
+opencv may queue frames internally; slow per-frame work (e.g. mediapipe) lets the
 main loop fall behind and `read()` keeps returning stale images—often looking
-fully frozen. A dedicated capture thread continuously pulls from the camera and
-stores only the latest frame so the game always samples current video.
+fully frozen. a dedicated capture thread continuously pulls from the camera and
+stores only the latest frame so consumers always sample current video.
 """
 
 from __future__ import annotations
@@ -16,7 +16,10 @@ import numpy as np
 
 
 class LatestFrameCapture:
-    """Single-consumer wrapper: one background thread calls `VideoCapture.read()`."""
+    """single-consumer wrapper: one background thread calls `VideoCapture.read()`.
+
+    not wired into `main.py` yet, but available if hand tracking latency grows.
+    """
 
     def __init__(self, cap: cv2.VideoCapture) -> None:
         self._cap = cap
@@ -26,11 +29,13 @@ class LatestFrameCapture:
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
+        """spawn daemon thread; safe to call once per instance."""
         self._running.set()
         self._thread = threading.Thread(target=self._loop, name="webcam-capture", daemon=True)
         self._thread.start()
 
     def _loop(self) -> None:
+        """tight read loop; overwrite `_latest` under lock (no queue unbounded growth)."""
         while self._running.is_set():
             ok, frame = self._cap.read()
             if ok and frame is not None:
@@ -38,13 +43,14 @@ class LatestFrameCapture:
                     self._latest = frame
 
     def read(self) -> tuple[bool, Optional[np.ndarray]]:
-        """Return a copy of the most recent frame (safe to draw on)."""
+        """return a copy of the most recent frame (caller may draw in-place safely)."""
         with self._lock:
             if self._latest is None:
                 return False, None
             return True, self._latest.copy()
 
     def stop(self) -> None:
+        """signal thread exit and join with timeout before releasing the capture."""
         self._running.clear()
         if self._thread is not None:
             self._thread.join(timeout=3.0)

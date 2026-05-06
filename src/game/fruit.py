@@ -1,3 +1,5 @@
+"""fruit and bomb entities, slice debris, juice particles, and opencv drawing helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,10 +18,7 @@ FruitKind = Literal["orange", "watermelon", "apple", "bomb"]
 
 @dataclass
 class Fruit:
-    """single fruit used by the game simulation.
-
-    we store position, velocity, radius growth, color, and sliced state.
-    """
+    """projectile with growing radius (pseudo-3d) and circle-vs-segment hit test."""
 
     x: float
     y: float
@@ -31,7 +30,7 @@ class Fruit:
     sliced: bool = False
 
     def update(self, dt: float) -> None:
-        """advance fruit position and growth by dt seconds."""
+        """apply gravity, integrate position, grow radius toward `target_radius`."""
         # basic projectile motion with downward gravity.
         self.vy += config.FRUIT_GRAVITY * dt
         self.x += self.vx * dt
@@ -41,12 +40,12 @@ class Fruit:
         self.radius = min(self.target_radius, self.radius + growth_speed * dt)
 
     def draw(self, frame: np.ndarray) -> None:
-        """Draw stylized fruit with per-kind details."""
+        """render skin/flesh details for orange, watermelon, apple, or bomb."""
         _draw_fruit(frame, self.kind, self.x, self.y, self.radius)
 
     def intersects_segment(self, p1: tuple[int, int], p2: tuple[int, int]) -> bool:
-        """return true if a swipe segment passes through the fruit circle."""
-        # represent all points as float vectors for projection math
+        """true if the closest point on segment p1–p2 to the center is within radius."""
+        # use vectors so we can project the center onto the infinite line, then clamp t.
         center = np.array([self.x, self.y], dtype=float)
         p1_np = np.array(p1, dtype=float)
         p2_np = np.array(p2, dtype=float)
@@ -54,32 +53,33 @@ class Fruit:
         seg_len_sq = float(np.dot(seg, seg))
 
         if seg_len_sq == 0:
-            # if there is no movement, just check point-to-center distance
+            # degenerate segment: treat as a point swipe.
             distance = float(np.linalg.norm(center - p1_np))
             return distance <= self.radius
 
-        # project center onto segment and clamp to segment bounds [0, 1]
+        # t in [0,1] picks the nearest point on the closed segment.
         t = float(np.dot(center - p1_np, seg) / seg_len_sq)
         t = max(0.0, min(1.0, t))
         closest = p1_np + t * seg
-        # slice hit if closest point on segment lies inside fruit radius.
+        # hit when distance from center to closest segment point <= circle radius.
         distance = float(np.linalg.norm(center - closest))
         return distance <= self.radius
 
     def touched_ground(self, height: int) -> bool:
-        """return true when bottom of fruit touches screen bottom (ground)."""
+        """true once falling (vy > 0) and lowest point reaches frame bottom."""
         return self.vy > 0 and (self.y + self.radius) >= height
 
     def out_of_bounds(self, width: int, height: int) -> bool:
-        """remove fruit when it exits side/top padding to keep list bounded."""
+        """true if fruit exits far left/right; top escape is allowed (arc may return)."""
         pad = 120
-        # Keep fruit alive if it only goes above the top edge; gravity will
-        # bring it back down and the player can still slice it.
+        # do not cull when y is above the frame; parabolas often peak off-screen.
         return self.x < -pad or self.x > width + pad
 
 
 @dataclass
 class SlicedFruitHalf:
+    """short-lived half-ellipse chunk flying apart after a successful slice."""
+
     x: float
     y: float
     vx: float
@@ -90,6 +90,7 @@ class SlicedFruitHalf:
     life_s: float = 0.45
 
     def update(self, dt: float) -> None:
+        """same gravity as fruit; decay `life_s` until `expired`."""
         self.vy += config.FRUIT_GRAVITY * dt
         self.x += self.vx * dt
         self.y += self.vy * dt
@@ -103,16 +104,18 @@ class SlicedFruitHalf:
         color, flesh = _fruit_palette(self.kind)
         cv2.ellipse(frame, center, axes, 0, start_angle, end_angle, color, -1)
         cv2.ellipse(frame, center, axes, 0, start_angle, end_angle, (245, 245, 245), 1)
-        # exposed interior
+        # inner ellipse reads as exposed flesh.
         inner_axes = (max(2, int(axes[0] * 0.72)), max(2, int(axes[1] * 0.72)))
         cv2.ellipse(frame, center, inner_axes, 0, start_angle, end_angle, flesh, -1)
 
     def expired(self) -> bool:
+        """true when lifetime elapsed; game loop should drop this half."""
         return self.life_s <= 0.0
 
 
 @dataclass
 class JuiceParticle:
+    """small circle with gravity and fade-out; used for juice and bomb sparks."""
     x: float
     y: float
     vx: float
@@ -122,21 +125,25 @@ class JuiceParticle:
     life_s: float
 
     def update(self, dt: float) -> None:
+        """lighter gravity than fruit; integrate and subtract from `life_s`."""
         self.vy += config.FRUIT_GRAVITY * 0.75 * dt
         self.x += self.vx * dt
         self.y += self.vy * dt
         self.life_s -= dt
 
     def draw(self, frame: np.ndarray) -> None:
+        """skip drawing dead particles to avoid z-fighting on last frame."""
         if self.life_s <= 0:
             return
         cv2.circle(frame, (int(self.x), int(self.y)), max(1, int(self.radius)), self.color_bgr, -1)
 
     def expired(self) -> bool:
+        """true when `life_s` exhausted."""
         return self.life_s <= 0.0
 
 
 def make_slice_effects(fruit: Fruit) -> tuple[list[SlicedFruitHalf], list[JuiceParticle]]:
+    """build visual feedback for one slice: halves + particles, or bomb-only burst."""
     if fruit.kind == "bomb":
         return [], make_bomb_explosion(fruit.x, fruit.y, fruit.vx, fruit.vy)
 
@@ -162,6 +169,7 @@ def make_slice_effects(fruit: Fruit) -> tuple[list[SlicedFruitHalf], list[JuiceP
     ]
     _, flesh = _fruit_palette(fruit.kind)
     particles: list[JuiceParticle] = []
+    # spray flesh-colored droplets in a ring, biased upward for readability.
     for _ in range(14):
         angle = random.uniform(0.0, math.tau)
         speed = random.uniform(120.0, 320.0)
@@ -180,6 +188,7 @@ def make_slice_effects(fruit: Fruit) -> tuple[list[SlicedFruitHalf], list[JuiceP
 
 
 def make_bomb_explosion(x: float, y: float, vx: float, vy: float) -> list[JuiceParticle]:
+    """dense radial burst; warm colors + gray smoke; inherits some fruit velocity."""
     particles: list[JuiceParticle] = []
     for _ in range(36):
         angle = random.uniform(0.0, math.tau)
@@ -205,6 +214,7 @@ def make_bomb_explosion(x: float, y: float, vx: float, vy: float) -> list[JuiceP
 
 
 def _fruit_palette(kind: FruitKind) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """return (skin_bgr, flesh_bgr) for drawing; bomb uses dark neutrals."""
     if kind == "orange":
         return (40, 155, 245), (120, 190, 255)
     if kind == "watermelon":
@@ -215,6 +225,7 @@ def _fruit_palette(kind: FruitKind) -> tuple[tuple[int, int, int], tuple[int, in
 
 
 def _draw_fruit(frame: np.ndarray, kind: FruitKind, x: float, y: float, radius: float) -> None:
+    """procedural opencv shapes per kind; shared white outline for visibility."""
     center = (int(x), int(y))
     skin, flesh = _fruit_palette(kind)
     r = int(radius)

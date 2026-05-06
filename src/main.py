@@ -1,3 +1,10 @@
+"""application entry: webcam capture, mediapipe hand trail, pygame audio, opencv ui.
+
+the main loop mirrors the camera for natural movement, maintains a short deque of
+index-finger positions for slice segments, and drives `GameState` when playing.
+start / game-over screens use opencv mouse callbacks for clickable buttons.
+"""
+
 from __future__ import annotations
 
 import sys
@@ -15,6 +22,8 @@ from src.vision.hand_tracker import HandTracker
 
 @dataclass
 class UiState:
+    """minimal ui state shared with opencv mouse callback via `param`."""
+
     mode: str = "start"  # start | playing | game_over
     mouse_x: int = 0
     mouse_y: int = 0
@@ -22,7 +31,7 @@ class UiState:
 
 
 def draw_hud(frame, score: int, misses: int, lives: int, level: int) -> None:
-    """draw simple overlay text for core game stats and controls."""
+    """draw overlay text for score, misses, lives, level, and quit hint."""
     cv2.putText(frame, f"Score: {score}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (240, 240, 240), 2)
     cv2.putText(frame, f"Misses: {misses}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (240, 240, 240), 2)
     cv2.putText(
@@ -55,6 +64,7 @@ def draw_hud(frame, score: int, misses: int, lives: int, level: int) -> None:
 
 
 def _button_rect(frame: np.ndarray) -> tuple[int, int, int, int]:
+    """return (x1, y1, x2, y2) for the centered start/play-again button."""
     h, w, _ = frame.shape
     bw, bh = 260, 74
     x1 = (w - bw) // 2
@@ -63,6 +73,7 @@ def _button_rect(frame: np.ndarray) -> tuple[int, int, int, int]:
 
 
 def _draw_button(frame: np.ndarray, text: str, hovered: bool) -> tuple[int, int, int, int]:
+    """fill rounded-rectangle style button; brighter green when `hovered`. returns rect."""
     x1, y1, x2, y2 = _button_rect(frame)
     color = (75, 190, 90) if hovered else (55, 150, 70)
     cv2.rectangle(frame, (x1, y1), (x2, y2), color, -1)
@@ -80,11 +91,13 @@ def _draw_button(frame: np.ndarray, text: str, hovered: bool) -> tuple[int, int,
 
 
 def _in_rect(x: int, y: int, rect: tuple[int, int, int, int]) -> bool:
+    """true if pixel (x, y) lies inside axis-aligned rect."""
     x1, y1, x2, y2 = rect
     return x1 <= x <= x2 and y1 <= y <= y2
 
 
 def _on_mouse(event: int, x: int, y: int, _flags: int, param: UiState) -> None:
+    """opencv callback: track cursor; set `clicked` on left button down."""
     param.mouse_x = x
     param.mouse_y = y
     if event == cv2.EVENT_LBUTTONDOWN:
@@ -92,7 +105,7 @@ def _on_mouse(event: int, x: int, y: int, _flags: int, param: UiState) -> None:
 
 
 def main() -> None:
-    """entry point for webcam loop, game simulation, and rendering."""
+    """run until user presses q: read frames, update game, draw, handle ui modes."""
     # open default webcam (device index 0).
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
@@ -149,15 +162,16 @@ def main() -> None:
                 trail.clear()
 
             if ui.mode == "playing":
-                # update game objects.
+                # advance level timer, spawn rules, and physics.
                 game.refresh_progression(now)
                 game.maybe_spawn_fruit(now)
                 game.update(dt)
 
-                # if we have at least two points, test newest segment for slicing.
+                # slice uses the last motion segment only (previous tip -> current tip).
                 if len(trail) >= 2:
                     p1 = trail[-2]
                     p2 = trail[-1]
+                    # pre-check bombs so we play explosion even when try_slice returns 0 fruit.
                     bomb_will_be_hit = any(
                         (not fruit.sliced)
                         and fruit.kind == "bomb"
@@ -172,6 +186,7 @@ def main() -> None:
                 if game.game_over:
                     ui.mode = "game_over"
             else:
+                # start / game_over: still advance dt-based effects (halves, particles).
                 game.update(dt)
 
             # draw all fruits.
@@ -194,6 +209,7 @@ def main() -> None:
                     )
 
             if ui.mode == "start":
+                # dim live feed; title + button; click inside rect starts run.
                 overlay = frame.copy()
                 cv2.rectangle(overlay, (0, 0), (frame.shape[1], frame.shape[0]), (20, 20, 20), -1)
                 frame = cv2.addWeighted(overlay, 0.42, frame, 0.58, 0.0)
@@ -210,6 +226,7 @@ def main() -> None:
                     ui.mode = "playing"
                 ui.clicked = False
             elif ui.mode == "game_over":
+                # stronger dim; final score; play again resets state and trail.
                 overlay = frame.copy()
                 cv2.rectangle(overlay, (0, 0), (frame.shape[1], frame.shape[0]), (25, 25, 25), -1)
                 frame = cv2.addWeighted(overlay, 0.5, frame, 0.5, 0.0)

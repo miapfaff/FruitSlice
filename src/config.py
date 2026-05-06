@@ -1,7 +1,7 @@
-"""central config values for gameplay and rendering.
+"""central config values for gameplay, camera, mediapipe assets, and slice feel.
 
-all values are kept in one place so we can tweak difficulty/feel
-without digging through multiple files.
+tune numbers here instead of hunting literals across `main`, `game_state`, and
+`fruit`. imports should treat these as constants (no runtime mutation required).
 """
 
 from pathlib import Path
@@ -25,7 +25,8 @@ CAMERA_DEVICE_INDEX = 0
 FRAME_WIDTH = 1280
 FRAME_HEIGHT = 720
 
-# max active fruits allowed on screen.
+# --- spawning / difficulty ---
+# max active fruits allowed on screen at level 1.
 MAX_FRUITS = 3
 # hard cap for level-scaled active fruits.
 MAX_FRUITS_CAP = 8
@@ -53,9 +54,10 @@ LEVEL_UP_EVERY_SECONDS = 20.0
 # scaling applied per level after level 1.
 LEVEL_SPAWN_COOLDOWN_STEP = 0.08
 LEVEL_SPEED_MULTIPLIER_STEP = 0.12
-# short HUD banner duration when leveling up.
+# short hud banner duration when leveling up.
 LEVEL_UP_BANNER_SECONDS = 1.0
 
+# --- slicing / hand trail (used by main + game_state) ---
 # short cooldown avoids counting one swipe multiple times per frame burst.
 SLICE_COOLDOWN_SECONDS = 0.08
 # how many recent hand points to keep for drawing the trail.
